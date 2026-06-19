@@ -1,0 +1,3 @@
+[submodule "WRF_tools"]
+	path = WRF_tools
+	url = https://github.com/AtmosSciTools/WRF_tools
