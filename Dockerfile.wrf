@@ -1,0 +1,205 @@
+FROM ubuntu:24.04
+
+ARG DEBIAN_FRONTEND=noninteractive
+ARG WRF_DEP_JOBS=16
+ARG WRF_BUILD_JOBS=4
+ARG WRF_VERSION=v4.7.1
+ARG WPS_VERSION=v4.6.0
+ARG WRF_CONFIGURE_OPTION=34
+ARG WRF_NESTING_OPTION=1
+ARG WPS_CONFIGURE_OPTION=3
+ARG CONDA_DIR=/opt/conda
+ARG CONDA_ENV_NAME=wrf_tools
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+ENV DIR=/opt/wrf_dependencies \
+    CONDA_DIR=${CONDA_DIR} \
+    CONDA_ENV_NAME=${CONDA_ENV_NAME} \
+    WRF_DIR=/opt/WRF \
+    WPS_DIR=/opt/WPS \
+    NETCDF=/opt/wrf_dependencies/netcdf \
+    JASPERLIB=/opt/wrf_dependencies/grib2/lib \
+    JASPERINC=/opt/wrf_dependencies/grib2/include \
+    WRFIO_NCD_LARGE_FILE_SUPPORT=1 \
+    PATH=/opt/wrf_dependencies/netcdf/bin:/opt/wrf_dependencies/mpich/bin:/opt/WRF/main:/opt/WPS:${CONDA_DIR}/envs/${CONDA_ENV_NAME}/bin:${CONDA_DIR}/bin:${PATH} \
+    LD_LIBRARY_PATH=/opt/wrf_dependencies/netcdf/lib:/opt/wrf_dependencies/grib2/lib:${LD_LIBRARY_PATH}
+
+# Match the UCAR GNU guide: set these only while building dependencies.
+ENV CC=gcc \
+    CXX=g++ \
+    FC=gfortran \
+    FCFLAGS="-m64 -fallow-argument-mismatch" \
+    F77=gfortran \
+    FFLAGS="-m64 -fallow-argument-mismatch" \
+    LDFLAGS="-L/opt/wrf_dependencies/netcdf/lib -L/opt/wrf_dependencies/grib2/lib" \
+    CPPFLAGS="-I/opt/wrf_dependencies/netcdf/include -I/opt/wrf_dependencies/grib2/include -fcommon"
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+      ca-certificates \
+      csh \
+      file \
+      g++ \
+      gcc \
+      gfortran \
+      git \
+      m4 \
+      make \
+      patch \
+      perl \
+      pkg-config \
+      tar \
+      time \
+      wget \
+      htop && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN wget -q -O /tmp/miniforge.sh \
+      https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh && \
+    bash /tmp/miniforge.sh -b -p "${CONDA_DIR}" && \
+    rm /tmp/miniforge.sh && \
+    conda config --system --set auto_update_conda false && \
+    conda config --system --set channel_priority strict && \
+    conda clean -afy
+
+RUN echo '. /opt/conda/etc/profile.d/mamba.sh' >> /etc/bash.bashrc && \
+    echo 'mamba activate base' >> /etc/bash.bashrc
+
+COPY WRF_tools/environment.yml /tmp/wrf_tools_environment.yml
+
+RUN mamba env create -n "${CONDA_ENV_NAME}" -f /tmp/wrf_tools_environment.yml && \
+    conda clean -afy && \
+    rm /tmp/wrf_tools_environment.yml && \
+    python -V && \
+    conda run -n "${CONDA_ENV_NAME}" python -c "import wrf; print('wrf-python ok')"
+
+WORKDIR /tmp/wrf-build
+
+RUN mkdir -p "${DIR}" && \
+    wget -q https://www2.mmm.ucar.edu/wrf/OnLineTutorial/compile_tutorial/tar_files/zlib-1.2.11.tar.gz && \
+    tar xzf zlib-1.2.11.tar.gz && \
+    cd zlib-1.2.11 && \
+    ./configure --prefix="${DIR}/grib2" && \
+    make -j "${WRF_DEP_JOBS}" && \
+    make install && \
+    cd /tmp/wrf-build && \
+    rm -rf zlib*
+
+RUN wget -q https://github.com/HDFGroup/hdf5/archive/hdf5-1_10_5.tar.gz && \
+    tar xzf hdf5-1_10_5.tar.gz && \
+    cd hdf5-hdf5-1_10_5 && \
+    ./configure \
+      --prefix="${DIR}/netcdf" \
+      --with-zlib="${DIR}/grib2" \
+      --enable-fortran \
+      --enable-shared && \
+    make -j "${WRF_DEP_JOBS}" && \
+    make install && \
+    cd /tmp/wrf-build && \
+    rm -rf hdf5*
+
+RUN wget -q https://github.com/Unidata/netcdf-c/archive/v4.7.2.tar.gz && \
+    tar xzf v4.7.2.tar.gz && \
+    cd netcdf-c-4.7.2 && \
+    ./configure \
+      --prefix="${DIR}/netcdf" \
+      --disable-dap \
+      --enable-netcdf-4 \
+      --enable-hdf5 \
+      --enable-shared && \
+    make -j "${WRF_DEP_JOBS}" && \
+    make install && \
+    cd /tmp/wrf-build && \
+    rm -rf v4.7.2.tar.gz netcdf-c*
+
+RUN wget -q https://github.com/Unidata/netcdf-fortran/archive/v4.5.2.tar.gz && \
+    tar xzf v4.5.2.tar.gz && \
+    cd netcdf-fortran-4.5.2 && \
+    LIBS="-lnetcdf -lz" \
+    ./configure \
+      --prefix="${DIR}/netcdf" \
+      --disable-hdf5 \
+      --enable-shared && \
+    make -j "${WRF_DEP_JOBS}" && \
+    make install && \
+    cd /tmp/wrf-build && \
+    rm -rf netcdf-fortran* v4.5.2.tar.gz
+
+RUN wget -q https://www2.mmm.ucar.edu/wrf/OnLineTutorial/compile_tutorial/tar_files/mpich-3.0.4.tar.gz && \
+    tar xzf mpich-3.0.4.tar.gz && \
+    cd mpich-3.0.4 && \
+    ./configure --prefix="${DIR}/mpich" && \
+    make -j "${WRF_DEP_JOBS}" && \
+    make install && \
+    cd /tmp/wrf-build && \
+    rm -rf mpich*
+
+RUN wget -q https://www2.mmm.ucar.edu/wrf/OnLineTutorial/compile_tutorial/tar_files/libpng-1.2.50.tar.gz && \
+    tar xzf libpng-1.2.50.tar.gz && \
+    cd libpng-1.2.50 && \
+    ./configure --prefix="${DIR}/grib2" && \
+    make -j "${WRF_DEP_JOBS}" && \
+    make install && \
+    cd /tmp/wrf-build && \
+    rm -rf libpng*
+
+RUN wget -q https://www2.mmm.ucar.edu/wrf/OnLineTutorial/compile_tutorial/tar_files/jasper-1.900.1.tar.gz && \
+    tar xzf jasper-1.900.1.tar.gz && \
+    cd jasper-1.900.1 && \
+    CFLAGS="-O2 -fPIC -Wno-implicit-function-declaration" \
+    ./configure --prefix="${DIR}/grib2" && \
+    make -j "${WRF_DEP_JOBS}" && \
+    make install && \
+    cd /tmp/wrf-build && \
+    rm -rf jasper* ._jasper-1.900.1
+
+WORKDIR /opt
+
+ENV CC= \
+    CXX= \
+    FC= \
+    FCFLAGS= \
+    F77= \
+    FFLAGS= \
+    LDFLAGS= \
+    CPPFLAGS=
+
+RUN git clone --recurse-submodules https://github.com/wrf-model/WRF.git "${WRF_DIR}" && \
+    cd "${WRF_DIR}" && \
+    if [[ "${WRF_VERSION}" != "master" ]]; then git checkout "${WRF_VERSION}"; fi && \
+    git submodule update --init --recursive && \
+    printf "%s\n%s\n" "${WRF_CONFIGURE_OPTION}" "${WRF_NESTING_OPTION}" | ./configure && \
+    ./compile em_real -j "${WRF_BUILD_JOBS}" 2>&1 | tee log.compile && \
+    test -x main/wrf.exe && \
+    test -x main/real.exe
+
+RUN git clone https://github.com/wrf-model/WPS.git "${WPS_DIR}" && \
+    cd "${WPS_DIR}" && \
+    if [[ "${WPS_VERSION}" != "master" ]]; then git checkout "${WPS_VERSION}"; fi && \
+    printf "%s\n" "${WPS_CONFIGURE_OPTION}" | ./configure && \
+    ./compile 2>&1 | tee log.compile && \
+    test -x geogrid.exe && \
+    test -x ungrib.exe && \
+    test -x metgrid.exe
+
+RUN printf '%s\n' \
+      'export DIR=/opt/wrf_dependencies' \
+      'export WRF_DIR=/opt/WRF' \
+      'export WPS_DIR=/opt/WPS' \
+      'export CONDA_DIR=/opt/conda' \
+      'export CONDA_ENV_NAME=wrf_tools' \
+      'export NETCDF=/opt/wrf_dependencies/netcdf' \
+      'export LD_LIBRARY_PATH=/opt/wrf_dependencies/netcdf/lib:/opt/wrf_dependencies/grib2/lib:${LD_LIBRARY_PATH}' \
+      'export PATH=/opt/wrf_dependencies/netcdf/bin:/opt/wrf_dependencies/mpich/bin:/opt/WRF/main:/opt/WPS:/opt/conda/envs/wrf_tools/bin:/opt/conda/bin:${PATH}' \
+      'export JASPERLIB=/opt/wrf_dependencies/grib2/lib' \
+      'export JASPERINC=/opt/wrf_dependencies/grib2/include' \
+      'export WRFIO_NCD_LARGE_FILE_SUPPORT=1' \
+      'source /opt/conda/etc/profile.d/conda.sh' \
+      'conda activate wrf_tools' \
+      > /etc/profile.d/wrf.sh && \
+    rm -rf /tmp/wrf-build
+
+WORKDIR /workspace
+
+CMD ["/bin/bash", "-l"]
