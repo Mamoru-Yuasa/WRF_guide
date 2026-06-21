@@ -1,0 +1,40 @@
+{
+  "name": "WRF Ubuntu",
+  "image": "wrf-ubuntu:4.7.1",
+  "workspaceFolder": "/workspace",
+  "mounts": [
+    "source=/mnt/work/share,target=/workspace/input,type=bind",
+    "source=/home/yuasa/data/simulation/,target=/workspace/simulation,type=bind",
+    "source=${localWorkspaceFolder},target=/workspace/WRF_guide,type=bind"
+  ],
+  "runArgs": [
+    "--memory=0",
+    "--memory-swap=0",
+    "--ulimit",
+    "memlock=-1:-1",
+    "--ulimit",
+    "stack=-1:-1"
+  ],
+  "remoteEnv": {
+    "DIR": "/opt/wrf_dependencies",
+    "WRF": "/opt/WRF",
+    "WPS": "/opt/WPS",
+    "WPS_GEOG": "/workspace/input/WPS_GEOG",
+    "REANAL": "/workspace/input/reanalysis",
+    "SIMULATION": "/workspace/simulation",
+    "NETCDF": "/opt/wrf_dependencies/netcdf",
+    "JASPERLIB": "/opt/wrf_dependencies/grib2/lib",
+    "JASPERINC": "/opt/wrf_dependencies/grib2/include",
+    "WRFIO_NCD_LARGE_FILE_SUPPORT": "1",
+    "LD_LIBRARY_PATH": "/opt/wrf_dependencies/netcdf/lib:/opt/wrf_dependencies/grib2/lib:${containerEnv:LD_LIBRARY_PATH}",
+    "PATH": "/opt/wrf_dependencies/netcdf/bin:/opt/wrf_dependencies/mpich/bin:/opt/WRF/main:/opt/WPS:${containerEnv:PATH}"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-vscode.cpptools",
+        "fortran-lang.linter-gfortran"
+      ]
+    }
+  }
+}
