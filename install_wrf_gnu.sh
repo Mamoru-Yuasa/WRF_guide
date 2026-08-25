@@ -1,5 +1,6 @@
 #!/usr/bin/sh
 # GNU Compilation of WRF dependencies
+# Source: https://forum.mmm.ucar.edu/threads/full-wrf-and-wps-installation-example-gnu.12385/
 
 #We need install some application for installation.
 
@@ -114,7 +115,7 @@ cd WRF
 git clone https://github.com/wrf-model/WPS.git
 cd WPS
 export WRF_DIR=$DIR/WRF
-./configure
+./configure #(choose options 1(serial))
 ./compile 2>&1 | tee log.compile
 
 
