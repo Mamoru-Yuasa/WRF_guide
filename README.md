@@ -16,9 +16,9 @@ cd WRF_guide
 
 - [WRF Container Guide: Podman and Apptainer](WRF_CONTAINER_GUIDE.md)
 
-### Build directory
+### Build directly
 
-- [Install directory (GNU)](./install_wrf_gnu.sh)
+- [Install directly (GNU)](./install_wrf_gnu.sh)
 
 - Intel classic Compiler
 
